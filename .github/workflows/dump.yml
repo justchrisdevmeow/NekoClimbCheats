@@ -9,15 +9,16 @@ jobs:
       - name: Download IPA
         run: curl -L -o game.ipa "https://temp.sh/AjNex/Hill_Climb_Racing_2_iOS_Mod_IPA_No_Jailbreak_Cheats_1.72.4_Hacked_IPA_by_iOSGods.com.ipa"
         
-      - name: Download Il2CppDumper
-        run: |
-          curl -L -o dumper.zip https://github.com/Perfare/Il2CppDumper/releases/download/v6.7.0/Il2CppDumper-v6.7.0-win-x64.zip
-          7z x dumper.zip -oIl2CppDumper
-          
+      - name: Download Il2CppDumper (working link)
+        run: curl -L -o dumper.zip "https://github.com/Perfare/Il2CppDumper/releases/download/v6.7.46/Il2CppDumper-win-v6.7.46.zip"
+        
+      - name: Extract Il2CppDumper
+        run: 7z x dumper.zip -oIl2CppDumper
+        
       - name: Extract IPA
         run: 7z x game.ipa -oextracted
         
-      - name: Find and run Il2CppDumper
+      - name: Run Il2CppDumper
         shell: pwsh
         run: |
           $appFolder = Get-ChildItem "extracted\Payload" -Directory | Select-Object -First 1
