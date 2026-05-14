@@ -1,0 +1,49 @@
+name: Dump HCR2 Offsets from Mega
+on:
+  workflow_dispatch:
+    inputs:
+      mega_url:
+        description: 'Mega.nz file URL (with # key)'
+        required: true
+        default: 'https://mega.nz/file/y5JiCDqY#p9TzJ0ty8D3qXvBErgaU2Wkc2Zmo5-8fqkllxq7UN8o'
+
+jobs:
+  dump:
+    runs-on: windows-latest
+    steps:
+      - name: Install MegaCMD
+        run: |
+          curl -L -o megacmd.zip https://mega.nz/linux/MEGACmd_Windows_x64.msi
+          # Actually MegaCMD requires an installer, so we use a Python approach instead
+          
+      - name: Download with Python (mega.py)
+        run: |
+          pip install mega.py
+          python -c "
+          from mega import Mega
+          m = Mega()
+          m.login()
+          m.download_url('${{ inputs.mega_url }}', 'game.ipa')
+          "
+          
+      - name: Download Il2CppDumper
+        run: |
+          curl -L -o dumper.zip https://github.com/Perfare/Il2CppDumper/releases/download/v6.7.0/Il2CppDumper-v6.7.0-win-x64.zip
+          7z x dumper.zip -oIl2CppDumper
+          
+      - name: Extract IPA
+        run: |
+          mkdir extracted
+          7z x game.ipa -oextracted
+          cd extracted/Payload/
+          dir /b  # List to see .app folder name
+          
+      - name: Run Il2CppDumper
+        run: |
+          Il2CppDumper/Il2CppDumper.exe "extracted/Payload/*.app/HillClimbRacing2" "extracted/Payload/*.app/Data/Managed/Metadata/global-metadata.dat" output/
+          
+      - name: Upload dump.cs
+        uses: actions/upload-artifact@v4
+        with:
+          name: hcr2_dump
+          path: output/dump.cs
