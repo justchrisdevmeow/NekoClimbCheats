@@ -3,7 +3,7 @@ on:
   workflow_dispatch:
     inputs:
       mega_url:
-        description: 'Mega.nz file URL (with # key)'
+        description: 'Mega.nz file URL'
         required: true
         default: 'https://mega.nz/file/y5JiCDqY#p9TzJ0ty8D3qXvBErgaU2Wkc2Zmo5-8fqkllxq7UN8o'
 
@@ -11,19 +11,25 @@ jobs:
   dump:
     runs-on: windows-latest
     steps:
-      - name: Install MegaCMD
+      - name: Install Python dependencies
         run: |
-          curl -L -o megacmd.zip https://mega.nz/linux/MEGACmd_Windows_x64.msi
-          # Actually MegaCMD requires an installer, so we use a Python approach instead
+          pip install mega.py --upgrade
+          pip install 'tenacity>=8.0.0'
           
-      - name: Download with Python (mega.py)
+      - name: Download IPA from Mega
         run: |
-          pip install mega.py
           python -c "
+          import urllib.parse
+          url = '${{ inputs.mega_url }}'
+          # Extract file ID and key
+          # Mega URLs format: https://mega.nz/file/FILEID#KEY
+          parts = url.replace('https://mega.nz/file/', '').split('#')
+          file_id = parts[0]
+          key = parts[1]
+          
           from mega import Mega
           m = Mega()
-          m.login()
-          m.download_url('${{ inputs.mega_url }}', 'game.ipa')
+          m.download(file_id, 'game.ipa', key=key)
           "
           
       - name: Download Il2CppDumper
@@ -33,14 +39,18 @@ jobs:
           
       - name: Extract IPA
         run: |
-          mkdir extracted
           7z x game.ipa -oextracted
-          cd extracted/Payload/
-          dir /b  # List to see .app folder name
+          echo "Extracted contents:"
+          dir extracted\Payload\
           
-      - name: Run Il2CppDumper
+      - name: Find and run Il2CppDumper
         run: |
-          Il2CppDumper/Il2CppDumper.exe "extracted/Payload/*.app/HillClimbRacing2" "extracted/Payload/*.app/Data/Managed/Metadata/global-metadata.dat" output/
+          $appFolder = Get-ChildItem -Path "extracted\Payload\" -Directory | Select-Object -First 1
+          $exePath = Join-Path $appFolder.FullName "HillClimbRacing2"
+          $metadataPath = Join-Path $appFolder.FullName "Data\Managed\Metadata\global-metadata.dat"
+          Write-Host "Using EXE: $exePath"
+          Write-Host "Using metadata: $metadataPath"
+          .\Il2CppDumper\Il2CppDumper.exe $exePath $metadataPath output
           
       - name: Upload dump.cs
         uses: actions/upload-artifact@v4
