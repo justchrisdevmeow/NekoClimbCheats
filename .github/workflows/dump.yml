@@ -57,20 +57,6 @@ jobs:
       # ========== STEP 3: EXTRACT IL2CPPDUMPER ==========
       - name: Extract Il2CppDumper
         run: 7z x dumper.zip -oIl2CppDumper
-        
-      - name: DEBUG - Check Il2CppDumper extraction
-        shell: pwsh
-        run: |
-          Write-Host "=== EXTRACTED IL2CPPDUMPER ==="
-          if (Test-Path "Il2CppDumper\Il2CppDumper.exe") {
-            Write-Host "✅ Il2CppDumper.exe found"
-            $version = & ".\Il2CppDumper\Il2CppDumper.exe" --version 2>$null
-            Write-Host "Version info: $version"
-          } else {
-            Write-Host "❌ Il2CppDumper.exe NOT found"
-            Get-ChildItem "Il2CppDumper" -Recurse | Select-Object FullName
-            exit 1
-          }
           
       # ========== STEP 4: EXTRACT IPA ==========
       - name: Extract IPA with 7zip
