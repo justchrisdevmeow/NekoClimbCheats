@@ -11,45 +11,37 @@ jobs:
   dump:
     runs-on: windows-latest
     steps:
-      - name: Install Python dependencies
+      - name: Install megatools
+        shell: pwsh
         run: |
-          pip install mega.py --upgrade
-          pip install 'tenacity>=8.0.0'
+          curl -L -o megatools.zip https://megatools.megous.com/builds/win32/megatools-1.11.0-win32.zip
+          Expand-Archive -Path megatools.zip -DestinationPath C:\megatools
           
       - name: Download IPA from Mega
+        shell: pwsh
         run: |
-          python -c "
-          import urllib.parse
-          url = '${{ inputs.mega_url }}'
-          # Extract file ID and key
-          # Mega URLs format: https://mega.nz/file/FILEID#KEY
-          parts = url.replace('https://mega.nz/file/', '').split('#')
-          file_id = parts[0]
-          key = parts[1]
-          
-          from mega import Mega
-          m = Mega()
-          m.download(file_id, 'game.ipa', key=key)
-          "
+          & C:\megatools\megatools.exe dl "${{ inputs.mega_url }}" --path game.ipa
           
       - name: Download Il2CppDumper
+        shell: pwsh
         run: |
           curl -L -o dumper.zip https://github.com/Perfare/Il2CppDumper/releases/download/v6.7.0/Il2CppDumper-v6.7.0-win-x64.zip
-          7z x dumper.zip -oIl2CppDumper
+          Expand-Archive -Path dumper.zip -DestinationPath Il2CppDumper
           
       - name: Extract IPA
+        shell: pwsh
         run: |
-          7z x game.ipa -oextracted
-          echo "Extracted contents:"
-          dir extracted\Payload\
+          Expand-Archive -Path game.ipa -DestinationPath extracted
+          Get-ChildItem -Path extracted\Payload\ -Directory
           
-      - name: Find and run Il2CppDumper
+      - name: Run Il2CppDumper
+        shell: pwsh
         run: |
           $appFolder = Get-ChildItem -Path "extracted\Payload\" -Directory | Select-Object -First 1
           $exePath = Join-Path $appFolder.FullName "HillClimbRacing2"
           $metadataPath = Join-Path $appFolder.FullName "Data\Managed\Metadata\global-metadata.dat"
-          Write-Host "Using EXE: $exePath"
-          Write-Host "Using metadata: $metadataPath"
+          Write-Host "EXE: $exePath"
+          Write-Host "Metadata: $metadataPath"
           .\Il2CppDumper\Il2CppDumper.exe $exePath $metadataPath output
           
       - name: Upload dump.cs
@@ -57,3 +49,9 @@ jobs:
         with:
           name: hcr2_dump
           path: output/dump.cs
+          
+      - name: Upload script.json (if exists)
+        uses: actions/upload-artifact@v4
+        with:
+          name: hcr2_script
+          path: output/script.json
