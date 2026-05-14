@@ -1,41 +1,215 @@
-name: Dump & Build NekoClimbCheats
+name: Debug - Dump HCR2 Completely
 on:
   workflow_dispatch:
 
 jobs:
-  dump:
+  debug-dump:
     runs-on: windows-latest
     steps:
-      - name: Download IPA from GitHub Release
+      # ========== STEP 1: DOWNLOAD IPA ==========
+      - name: Download IPA from Release
         run: curl -L -o game.ipa "https://github.com/justchrisdevmeow/NekoClimbCheats/releases/download/213/thgisdifsdf.ipa"
         
-      - name: Verify download
+      - name: DEBUG - Check IPA download
         shell: pwsh
         run: |
-          $size = (Get-Item "game.ipa").Length
-          Write-Host "Downloaded $size bytes"
-          if ($size -lt 10000000) { throw "Download too small - got HTML instead of IPA" }
+          Write-Host "=== IPA FILE INFO ==="
+          if (Test-Path "game.ipa") {
+            $size = (Get-Item "game.ipa").Length
+            Write-Host "✅ File exists: game.ipa"
+            Write-Host "📦 Size: $([math]::Round($size/1MB, 2)) MB ($size bytes)"
+            if ($size -lt 1000000) {
+              Write-Host "❌ ERROR: File too small - got HTML error page instead of IPA"
+              Write-Host "First 500 bytes of file:"
+              Get-Content "game.ipa" -TotalCount 500 -ErrorAction SilentlyContinue
+              exit 1
+            } else {
+              Write-Host "✅ File size looks correct"
+            }
+          } else {
+            Write-Host "❌ ERROR: game.ipa not found"
+            exit 1
+          }
           
+      # ========== STEP 2: DOWNLOAD IL2CPPDUMPER ==========
       - name: Download Il2CppDumper
         run: curl -L -o dumper.zip "https://github.com/Perfare/Il2CppDumper/releases/download/v6.7.46/Il2CppDumper-win-v6.7.46.zip"
         
+      - name: DEBUG - Check Il2CppDumper download
+        shell: pwsh
+        run: |
+          Write-Host "=== IL2CPPDUMPER FILE INFO ==="
+          if (Test-Path "dumper.zip") {
+            $size = (Get-Item "dumper.zip").Length
+            Write-Host "✅ File exists: dumper.zip"
+            Write-Host "📦 Size: $([math]::Round($size/1KB, 2)) KB ($size bytes)"
+            if ($size -lt 100000) {
+              Write-Host "❌ ERROR: Il2CppDumper download too small"
+              exit 1
+            } else {
+              Write-Host "✅ Size looks correct"
+            }
+          } else {
+            Write-Host "❌ ERROR: dumper.zip not found"
+            exit 1
+          }
+          
+      # ========== STEP 3: EXTRACT IL2CPPDUMPER ==========
       - name: Extract Il2CppDumper
         run: 7z x dumper.zip -oIl2CppDumper
         
-      - name: Extract IPA
-        run: 7z x game.ipa -oextracted
+      - name: DEBUG - Check Il2CppDumper extraction
+        shell: pwsh
+        run: |
+          Write-Host "=== EXTRACTED IL2CPPDUMPER ==="
+          if (Test-Path "Il2CppDumper\Il2CppDumper.exe") {
+            Write-Host "✅ Il2CppDumper.exe found"
+            $version = & ".\Il2CppDumper\Il2CppDumper.exe" --version 2>$null
+            Write-Host "Version info: $version"
+          } else {
+            Write-Host "❌ Il2CppDumper.exe NOT found"
+            Get-ChildItem "Il2CppDumper" -Recurse | Select-Object FullName
+            exit 1
+          }
+          
+      # ========== STEP 4: EXTRACT IPA ==========
+      - name: Extract IPA with 7zip
+        run: 7z x game.ipa -oextracted -y
         
+      - name: DEBUG - Check IPA extraction
+        shell: pwsh
+        run: |
+          Write-Host "=== EXTRACTED IPA STRUCTURE ==="
+          if (Test-Path "extracted\Payload") {
+            Write-Host "✅ Payload folder exists"
+            $appFolders = Get-ChildItem "extracted\Payload" -Directory
+            Write-Host "📁 App folders found: $($appFolders.Count)"
+            foreach ($folder in $appFolders) {
+              Write-Host "  - $($folder.Name)"
+            }
+            
+            $appFolder = $appFolders | Select-Object -First 1
+            Write-Host "`n=== CONTENTS OF $($appFolder.Name) ==="
+            Get-ChildItem $appFolder.FullName | Select-Object Name, Length | Format-Table -AutoSize
+            
+            # Check for Unity structure
+            $hasData = Test-Path "$($appFolder.FullName)\Data"
+            $hasMetadata = Test-Path "$($appFolder.FullName)\Data\Managed\Metadata"
+            Write-Host "`n=== UNITY STRUCTURE CHECK ==="
+            Write-Host "Data folder exists: $hasData"
+            Write-Host "Metadata folder exists: $hasMetadata"
+            
+            if ($hasMetadata) {
+              $metaFile = Get-ChildItem "$($appFolder.FullName)\Data\Managed\Metadata" -Filter "*.dat"
+              Write-Host "Metadata files found: $($metaFile.Count)"
+              foreach ($file in $metaFile) {
+                Write-Host "  - $($file.Name) ($([math]::Round($file.Length/1KB, 2)) KB)"
+              }
+            }
+            
+            # Find executable
+            Write-Host "`n=== EXECUTABLE FILES ==="
+            $exeFiles = Get-ChildItem $appFolder.FullName -File | Where-Object { 
+              $_.Extension -eq "" -or $_.Extension -eq ".exe" 
+            }
+            foreach ($exe in $exeFiles) {
+              Write-Host "  - $($exe.Name) ($([math]::Round($exe.Length/1MB, 2)) MB)"
+            }
+            
+          } else {
+            Write-Host "❌ Payload folder not found"
+            Write-Host "Extracted contents:"
+            Get-ChildItem "extracted" -Recurse -Depth 2 | Select-Object FullName
+            exit 1
+          }
+          
+      # ========== STEP 5: RUN IL2CPPDUMPER WITH AUTO MODE ==========
       - name: Run Il2CppDumper
         shell: pwsh
         run: |
           $appFolder = Get-ChildItem "extracted\Payload" -Directory | Select-Object -First 1
-          $exePath = Join-Path $appFolder.FullName "HillClimbRacing2"
-          $metadataPath = Join-Path $appFolder.FullName "Data\Managed\Metadata\global-metadata.dat"
-          Write-Host "Using EXE: $exePath"
-          .\Il2CppDumper\Il2CppDumper.exe $exePath $metadataPath output
           
+          # Try to find the executable
+          $exePath = $null
+          $possibleNames = @("HillClimbRacing2", "Game", "UnityPlayer", "HCR2")
+          foreach ($name in $possibleNames) {
+            $testPath = Join-Path $appFolder.FullName $name
+            if (Test-Path $testPath) {
+              $exePath = $testPath
+              Write-Host "✅ Found executable: $name"
+              break
+            }
+          }
+          
+          # If not found, take any file without extension
+          if (-not $exePath) {
+            $exePath = Get-ChildItem $appFolder.FullName -File | Where-Object { $_.Extension -eq "" -and $_.Length -gt 100000 } | Select-Object -First 1
+            if ($exePath) {
+              $exePath = $exePath.FullName
+              Write-Host "✅ Found executable by guessing: $(Split-Path $exePath -Leaf)"
+            }
+          }
+          
+          $metadataPath = Join-Path $appFolder.FullName "Data\Managed\Metadata\global-metadata.dat"
+          
+          Write-Host "`n=== IL2CPPDUMPER CONFIGURATION ==="
+          Write-Host "Executable: $exePath"
+          Write-Host "Metadata: $metadataPath"
+          Write-Host "Output dir: output"
+          
+          if (-not (Test-Path $exePath)) {
+            Write-Host "❌ ERROR: Cannot find executable in $($appFolder.FullName)"
+            exit 1
+          }
+          
+          if (-not (Test-Path $metadataPath)) {
+            Write-Host "❌ ERROR: Cannot find global-metadata.dat"
+            exit 1
+          }
+          
+          Write-Host "`n=== RUNNING IL2CPPDUMPER ==="
+          Write-Host "This may take 1-3 minutes..."
+          
+          # Run with Auto mode (pipe "Auto" into stdin)
+          $output = "Auto" | & ".\Il2CppDumper\Il2CppDumper.exe" $exePath $metadataPath output 2>&1
+          $output | Write-Host
+          
+          # Check if it succeeded
+          if (Test-Path "output\dump.cs") {
+            Write-Host "`n✅ SUCCESS! dump.cs created"
+            $dumpSize = (Get-Item "output\dump.cs").Length
+            Write-Host "dump.cs size: $([math]::Round($dumpSize/1KB, 2)) KB"
+          } else {
+            Write-Host "`n❌ FAILED: dump.cs not created"
+            Write-Host "Output directory contents:"
+            Get-ChildItem "output" -ErrorAction SilentlyContinue | Select-Object Name, Length
+            exit 1
+          }
+          
+      # ========== STEP 6: UPLOAD RESULTS ==========
       - name: Upload dump.cs
         uses: actions/upload-artifact@v4
         with:
           name: hcr2_dump
           path: output/dump.cs
+          
+      - name: Upload script.json (if exists)
+        uses: actions/upload-artifact@v4
+        with:
+          name: hcr2_script
+          path: output/script.json
+          
+      - name: Upload full Il2CppDumper output
+        uses: actions/upload-artifact@v4
+        with:
+          name: il2cpp_output
+          path: output/
+          
+      - name: DEBUG - Show first 50 lines of dump.cs
+        if: success()
+        shell: pwsh
+        run: |
+          if (Test-Path "output\dump.cs") {
+            Write-Host "=== FIRST 50 LINES OF DUMP.CS ==="
+            Get-Content "output\dump.cs" -TotalCount 50
+          }
