@@ -1,47 +1,29 @@
-name: Dump HCR2 Offsets from Mega
+name: Dump & Build NekoClimbCheats
 on:
   workflow_dispatch:
-    inputs:
-      mega_url:
-        description: 'Mega.nz file URL'
-        required: true
-        default: 'https://mega.nz/file/y5JiCDqY#p9TzJ0ty8D3qXvBErgaU2Wkc2Zmo5-8fqkllxq7UN8o'
 
 jobs:
   dump:
     runs-on: windows-latest
     steps:
-      - name: Install megatools
-        shell: pwsh
-        run: |
-          curl -L -o megatools.zip https://megatools.megous.com/builds/win32/megatools-1.11.0-win32.zip
-          Expand-Archive -Path megatools.zip -DestinationPath C:\megatools
-          
-      - name: Download IPA from Mega
-        shell: pwsh
-        run: |
-          & C:\megatools\megatools.exe dl "${{ inputs.mega_url }}" --path game.ipa
-          
+      - name: Download IPA
+        run: curl -L -o game.ipa "https://temp.sh/AjNex/Hill_Climb_Racing_2_iOS_Mod_IPA_No_Jailbreak_Cheats_1.72.4_Hacked_IPA_by_iOSGods.com.ipa"
+        
       - name: Download Il2CppDumper
-        shell: pwsh
         run: |
           curl -L -o dumper.zip https://github.com/Perfare/Il2CppDumper/releases/download/v6.7.0/Il2CppDumper-v6.7.0-win-x64.zip
-          Expand-Archive -Path dumper.zip -DestinationPath Il2CppDumper
+          7z x dumper.zip -oIl2CppDumper
           
       - name: Extract IPA
+        run: 7z x game.ipa -oextracted
+        
+      - name: Find and run Il2CppDumper
         shell: pwsh
         run: |
-          Expand-Archive -Path game.ipa -DestinationPath extracted
-          Get-ChildItem -Path extracted\Payload\ -Directory
-          
-      - name: Run Il2CppDumper
-        shell: pwsh
-        run: |
-          $appFolder = Get-ChildItem -Path "extracted\Payload\" -Directory | Select-Object -First 1
+          $appFolder = Get-ChildItem "extracted\Payload" -Directory | Select-Object -First 1
           $exePath = Join-Path $appFolder.FullName "HillClimbRacing2"
           $metadataPath = Join-Path $appFolder.FullName "Data\Managed\Metadata\global-metadata.dat"
-          Write-Host "EXE: $exePath"
-          Write-Host "Metadata: $metadataPath"
+          Write-Host "Dumping from: $exePath"
           .\Il2CppDumper\Il2CppDumper.exe $exePath $metadataPath output
           
       - name: Upload dump.cs
@@ -49,9 +31,3 @@ jobs:
         with:
           name: hcr2_dump
           path: output/dump.cs
-          
-      - name: Upload script.json (if exists)
-        uses: actions/upload-artifact@v4
-        with:
-          name: hcr2_script
-          path: output/script.json
