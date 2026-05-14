@@ -1,90 +1,27 @@
-name: NekoClimbCheats - Full Build Pipeline
+name: Dump & Build NekoClimbCheats
 on:
   workflow_dispatch:
-    inputs:
-      ipa_url:
-        description: 'Direct download URL for HCR2 IPA (optional - leave empty if IPA already in repo)'
-        required: false
-        default: ''
 
 jobs:
-  prepare:
-    runs-on: windows-latest
-    outputs:
-      ipa_exists: ${{ steps.check.outputs.ipa_exists }}
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          lfs: true
-          
-      - name: Check if IPA exists in repo
-        id: check
-        shell: pwsh
-        run: |
-          $ipa = Get-ChildItem -Filter "*.ipa" | Select-Object -First 1
-          if ($ipa) {
-            Write-Host "Found IPA: $($ipa.Name) ($($ipa.Length) bytes)"
-            echo "ipa_exists=true" >> $env:GITHUB_OUTPUT
-            echo "ipa_name=$($ipa.Name)" >> $env:GITHUB_OUTPUT
-          } else {
-            echo "ipa_exists=false" >> $env:GITHUB_OUTPUT
-          }
-          
-  download:
-    needs: prepare
-    runs-on: windows-latest
-    if: needs.prepare.outputs.ipa_exists == 'false' && github.event.inputs.ipa_url != ''
-    outputs:
-      ipa_name: ${{ steps.download.outputs.ipa_name }}
-    steps:
-      - name: Download IPA from URL
-        id: download
-        run: |
-          curl -L -o game.ipa "${{ github.event.inputs.ipa_url }}"
-          if ((Get-Item game.ipa).Length -lt 1000000) { throw "Download failed - file too small" }
-          echo "ipa_name=game.ipa" >> $env:GITHUB_OUTPUT
-          
-      - name: Upload IPA as artifact (for next job)
-        uses: actions/upload-artifact@v4
-        with:
-          name: downloaded_ipa
-          path: game.ipa
-          
   dump:
-    needs: [prepare, download]
     runs-on: windows-latest
-    outputs:
-      dump_exists: ${{ steps.check_dump.outputs.dump_exists }}
     steps:
-      - uses: actions/checkout@v4
-        with:
-          lfs: true
-          
-      - name: Get IPA file
+      - name: Download IPA from GitHub Release
+        run: curl -L -o game.ipa "https://github.com/justchrisdevmeow/NekoClimbCheats/releases/download/213/thgisdifsdf.ipa"
+        
+      - name: Verify download
         shell: pwsh
         run: |
-          # Try to find IPA in repo first
-          $localIpa = Get-ChildItem -Filter "*.ipa" | Select-Object -First 1
-          if ($localIpa) {
-            Copy-Item $localIpa.FullName -Destination "game.ipa"
-            Write-Host "Using local IPA: $($localIpa.Name)"
-          } else {
-            # Download from previous job's artifact
-            $artifact = (Get-ChildItem -Path "${{ runner.temp }}\**\downloaded_ipa" -Recurse | Select-Object -First 1)
-            if ($artifact) {
-              Copy-Item $artifact.FullName -Destination "game.ipa"
-              Write-Host "Using artifact IPA"
-            } else {
-              throw "No IPA found anywhere"
-            }
-          }
+          $size = (Get-Item "game.ipa").Length
+          Write-Host "Downloaded $size bytes"
+          if ($size -lt 10000000) { throw "Download too small - got HTML instead of IPA" }
           
       - name: Download Il2CppDumper
-        run: |
-          curl -L -o dumper.zip "https://github.com/Perfare/Il2CppDumper/releases/download/v6.7.46/Il2CppDumper-win-v6.7.46.zip"
-          if ((Get-Item dumper.zip).Length -lt 100000) { throw "Il2CppDumper download failed" }
-          7z x dumper.zip -oIl2CppDumper
-          
+        run: curl -L -o dumper.zip "https://github.com/Perfare/Il2CppDumper/releases/download/v6.7.46/Il2CppDumper-win-v6.7.46.zip"
+        
+      - name: Extract Il2CppDumper
+        run: 7z x dumper.zip -oIl2CppDumper
+        
       - name: Extract IPA
         run: 7z x game.ipa -oextracted
         
@@ -92,40 +29,13 @@ jobs:
         shell: pwsh
         run: |
           $appFolder = Get-ChildItem "extracted\Payload" -Directory | Select-Object -First 1
-          Write-Host "App folder: $($appFolder.FullName)"
           $exePath = Join-Path $appFolder.FullName "HillClimbRacing2"
           $metadataPath = Join-Path $appFolder.FullName "Data\Managed\Metadata\global-metadata.dat"
-          
-          if (-not (Test-Path $exePath)) {
-            # Try alternative executable name
-            $exePath = Get-ChildItem $appFolder.FullName -Filter "*.exe" | Select-Object -First 1
-            $exePath = $exePath.FullName
-          }
-          
-          Write-Host "EXE: $exePath"
-          Write-Host "Metadata: $metadataPath"
+          Write-Host "Using EXE: $exePath"
           .\Il2CppDumper\Il2CppDumper.exe $exePath $metadataPath output
-          
-      - name: Verify dump.cs was created
-        id: check_dump
-        shell: pwsh
-        run: |
-          if (Test-Path "output\dump.cs") {
-            Write-Host "dump.cs created successfully"
-            echo "dump_exists=true" >> $env:GITHUB_OUTPUT
-          } else {
-            Write-Host "dump.cs not found"
-            echo "dump_exists=false" >> $env:GITHUB_OUTPUT
-          }
           
       - name: Upload dump.cs
         uses: actions/upload-artifact@v4
         with:
           name: hcr2_dump
           path: output/dump.cs
-          
-      - name: Upload script.json (if exists)
-        uses: actions/upload-artifact@v4
-        with:
-          name: hcr2_script
-          path: output/script.json      
