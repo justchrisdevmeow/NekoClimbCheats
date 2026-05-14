@@ -8,7 +8,7 @@ jobs:
     steps:
       # ========== STEP 1: DOWNLOAD IPA ==========
       - name: Download IPA from Release
-        run: curl -L -o game.ipa "https://github.com/justchrisdevmeow/NekoClimbCheats/releases/download/213/thgisdifsdf.ipa"
+        run: curl -L -o game.ipa "https://github.com/justchrisdevmeow/NekoClimbCheats/releases/download/213/und3fined.ipa"
         
       - name: DEBUG - Check IPA download
         shell: pwsh
